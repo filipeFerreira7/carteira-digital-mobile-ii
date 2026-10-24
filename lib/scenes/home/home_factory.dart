@@ -8,7 +8,7 @@ import 'home_view.dart';
 import 'home_view_model.dart';
 
 abstract final class HomeFactory {
-  static Widget make() {
+  static Widget make({ValueNotifier<ThemeMode>? themeNotifier}) {
     final baseUrl = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
         ? "http://10.0.2.2:8082"
         : "http://localhost:8082";
@@ -27,6 +27,7 @@ abstract final class HomeFactory {
       authRepository: authRepository,
       transactionRepository: transactionRepository,
       coordinator: coordinator,
+      themeNotifier: themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.light),
     );
     return HomeView(viewModel: viewModel);
   }

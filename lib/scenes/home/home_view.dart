@@ -16,6 +16,26 @@ class HomeView extends StatelessWidget {
 
     return AppScaffold(
       showAppBar: false,
+      bottom: NavigationBar(
+        selectedIndex: 0,
+        onDestinationSelected: (index) {
+          if (index == 1) {
+            viewModel.navigateToProfile(context);
+          }
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'Lançamentos',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Perfil',
+          ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: viewModel,
         builder: (context, _) {
@@ -28,7 +48,7 @@ class HomeView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header: Title "Carteira", Greeting, and Settings/Logoff action with top spacing
+                // Header: Title "Carteira", Greeting, and Theme Toggle action (top right)
                 Padding(
                   padding: const EdgeInsets.only(
                     top: AppSpacing.lg,
@@ -50,26 +70,25 @@ class HomeView extends StatelessWidget {
                           Row(
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.settings_outlined),
-                                tooltip: 'Configurações',
-                                onPressed: () {},
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.logout),
-                                tooltip: 'Sair (Logoff)',
-                                onPressed: () => viewModel.logout(context),
+                                icon: Icon(
+                                  viewModel.themeNotifier.value == ThemeMode.light
+                                      ? Icons.brightness_6_outlined
+                                      : Icons.brightness_6,
+                                ),
+                                tooltip: 'Alternar tema',
+                                onPressed: viewModel.toggleTheme,
                               ),
                             ],
                           ),
                         ],
                       ),
                       if (viewModel.userName != null) ...[
-                        const Gap.xs(),
+                        const Gap.xxs(),
                         Text(
                           'Olá ${viewModel.userName}! Vamos organizar suas finanças? :)',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurface,
-                            fontWeight: FontWeight.w600, // Bolder / stronger text
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -146,7 +165,9 @@ class HomeView extends StatelessWidget {
                 else
                   BalanceCard(
                     title: 'Saldo do mês',
-                    monthLabel: formatMonthKey(viewModel.selectedMonth),
+                    monthLabel: viewModel.selectedMonth.isNotEmpty
+                        ? formatMonthKey(viewModel.selectedMonth)
+                        : null,
                     balance: moneyFormatter.format(viewModel.summary?.balance ?? 0.0),
                     income: moneyFormatter.format(viewModel.summary?.income ?? 0.0),
                     expense: moneyFormatter.format(viewModel.summary?.expense ?? 0.0),
@@ -235,6 +256,7 @@ class HomeView extends StatelessWidget {
                         title: tx.description,
                         subtitle: subtitleParts.join(' · '),
                         amount: moneyFormatter.format(tx.amount),
+                        onTap: () => viewModel.onTransactionSelected(context, tx.id),
                       );
                     }),
                   ],

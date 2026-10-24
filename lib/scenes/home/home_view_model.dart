@@ -1,4 +1,4 @@
-import 'package:carteira_core/carteira_core.dart';
+import 'package:carteira_core/carteira_core.dart' as core;
 import 'package:flutter/material.dart';
 import '../../storage/auth_storage.dart';
 import 'home_coordinator.dart';
@@ -21,40 +21,62 @@ class CategorySummary {
 class HomeViewModel extends ChangeNotifier {
   HomeViewModel({
     required this.server,
-    required AuthRepository authRepository,
-    required TransactionRepository transactionRepository,
+    required core.AuthRepository authRepository,
+    required core.TransactionRepository transactionRepository,
     required this.coordinator,
+    required ValueNotifier<ThemeMode> themeNotifier,
   })  : _authRepository = authRepository,
-        _transactionRepository = transactionRepository {
+        _transactionRepository = transactionRepository,
+        _themeNotifier = themeNotifier {
+    _themeNotifier.addListener(_onThemeChanged);
     _initSessionAndFetch();
   }
 
   final HomeServer server;
-  final AuthRepository _authRepository;
-  final TransactionRepository _transactionRepository;
+  final core.AuthRepository _authRepository;
+  final core.TransactionRepository _transactionRepository;
   final HomeCoordinator coordinator;
+  final ValueNotifier<ThemeMode> _themeNotifier;
 
   final List<MapEntry<String, String>> _months = [];
-  String _selectedMonth = '';
-  Summary? _summary;
+  String _selectedMonth = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
+  core.Summary? _summary;
   List<CategorySummary> _categories = [];
-  List<Transaction> _transactions = [];
+  List<core.Transaction> _transactions = [];
   String _searchQuery = '';
-  TransactionType? _selectedType;
+  core.TransactionType? _selectedType;
   bool _isLoading = false;
   String? _errorMessage;
   String? _userName;
 
   List<MapEntry<String, String>> get months => _months;
   String get selectedMonth => _selectedMonth;
-  Summary? get summary => _summary;
+  core.Summary? get summary => _summary;
   List<CategorySummary> get categories => _categories;
-  List<Transaction> get transactions => _transactions;
+  List<core.Transaction> get transactions => _transactions;
   String get searchQuery => _searchQuery;
-  TransactionType? get selectedType => _selectedType;
+  core.TransactionType? get selectedType => _selectedType;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get userName => _userName;
+  ValueNotifier<ThemeMode> get themeNotifier => _themeNotifier;
+
+  void toggleTheme() {
+    _themeNotifier.value = _themeNotifier.value == ThemeMode.light
+        ? ThemeMode.dark
+        : ThemeMode.light;
+    notifyListeners();
+  }
+
+  void _onThemeChanged() {
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _themeNotifier.removeListener(_onThemeChanged);
+    super.dispose();
+  }
 
   Future<void> _initSessionAndFetch() async {
     await _authRepository.restore();
@@ -97,7 +119,7 @@ class HomeViewModel extends ChangeNotifier {
     loadData();
   }
 
-  void setFilterType(TransactionType? type) {
+  void setFilterType(core.TransactionType? type) {
     if (_selectedType == type) return;
     _selectedType = type;
     notifyListeners();
@@ -109,48 +131,54 @@ class HomeViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    final summaryResult = await _transactionRepository.summary(_selectedMonth);
-    final allTransactionsResult = await _transactionRepository.list(
-      TransactionFilter(month: _selectedMonth, pageSize: 100),
-    );
-    final filteredTransactionsResult = await _transactionRepository.list(
-      TransactionFilter(
-        month: _selectedMonth,
-        type: _selectedType,
-        query: _searchQuery.isNotEmpty ? _searchQuery : null,
-        pageSize: 100,
+    final results = await Future.wait([
+      _transactionRepository.summary(_selectedMonth),
+      _transactionRepository.list(
+        core.TransactionFilter(month: _selectedMonth, pageSize: 100),
       ),
-    );
+      _transactionRepository.list(
+        core.TransactionFilter(
+          month: _selectedMonth,
+          type: _selectedType,
+          query: _searchQuery.isNotEmpty ? _searchQuery : null,
+          pageSize: 100,
+        ),
+      ),
+    ]);
 
     _isLoading = false;
 
+    final summaryResult = results[0] as core.Result<core.Summary>;
+    final allTransactionsResult = results[1] as core.Result<core.Page<core.Transaction>>;
+    final filteredTransactionsResult = results[2] as core.Result<core.Page<core.Transaction>>;
+
     switch (summaryResult) {
-      case Ok(value: final summaryData):
+      case core.Ok(value: final summaryData):
         _summary = summaryData;
-      case Failure(error: final error):
+      case core.Failure(error: final error):
         _errorMessage = error.message;
         _summary = null;
     }
 
     switch (allTransactionsResult) {
-      case Ok(value: final page):
+      case core.Ok(value: final page):
         _processCategories(page.items);
-      case Failure():
+      case core.Failure():
         _categories = [];
     }
 
     switch (filteredTransactionsResult) {
-      case Ok(value: final page):
+      case core.Ok(value: final page):
         _transactions = page.items;
-      case Failure():
+      case core.Failure():
         _transactions = [];
     }
 
     notifyListeners();
   }
 
-  void _processCategories(List<Transaction> transactions) {
-    final expenses = transactions.where((t) => t.type == TransactionType.expense);
+  void _processCategories(List<core.Transaction> transactions) {
+    final expenses = transactions.where((t) => t.type == core.TransactionType.expense);
     final totals = <String, double>{};
     double totalExpenseSum = 0;
 
@@ -165,7 +193,7 @@ class HomeViewModel extends ChangeNotifier {
     final sortedEntries = totals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    final formatter = MoneyFormatter.forCurrency(Currency.brl);
+    final formatter = core.MoneyFormatter.forCurrency(core.Currency.brl);
 
     _categories = sortedEntries.map((entry) {
       final amount = entry.value;
@@ -184,5 +212,17 @@ class HomeViewModel extends ChangeNotifier {
     await authStorage.clear();
     if (!context.mounted) return;
     coordinator.navigateToLogin(context);
+  }
+
+  void navigateToProfile(BuildContext context) {
+    coordinator.navigateToProfile(context, _themeNotifier);
+  }
+
+  void onTransactionSelected(BuildContext context, String transactionId) {
+    coordinator.navigateToTransactionDetail(
+      context,
+      transactionId: transactionId,
+      onDeleted: loadData,
+    );
   }
 }
